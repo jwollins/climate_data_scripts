@@ -5,12 +5,12 @@
 ### 02 - load data and plot every variable
 
 
-setwd(dir = "~/Documents/ERP/scripts/erpsoiltools/weather_station/")
+# setwd(dir = "~/Documents/ERP/scripts/erpsoiltools/weather_station/")
 
 
 ## 00 packages ####
 
-source(file = "01_packages.R")
+source(file = "weather_station/01_packages.R")
 
 
 ## 01 Load Data ####
