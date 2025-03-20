@@ -11,41 +11,32 @@ source(file = "weather_station/01_packages.R")
 library(dplyr)
 library(lubridate)
 
+
+
+
+
+
 #______________________________________####
 # data ####
 
 
-## ~~ Experiment data ####
+experiment_dat <- read.delim("~/OneDrive - Harper Adams University/Data/climate_data/data/shawburydata_long_term.txt",
+                         header = FALSE, 
+                         skip = 7, 
+                         sep = "",  # Auto-detect white spaces
+                         na.strings = "---",
+                         col.names = c("Year", "Month", "Tmax", "Tmin", "AirFrost", "Rain", "Sun"),
+                         strip.white = TRUE)
 
-dat <- read_excel(path = "~/OneDrive - Harper Adams University/Data/climate_data/data/shawbury_2021_01_01_to_2024_12_31.xlsx")
+experiment_dat <- filter(.data = experiment_dat, 
+                         experiment_dat$Year == 2022 |
+                           experiment_dat$Year == 2023 |
+                           experiment_dat$Year == 2024)
 
-glimpse(dat)
+glimpse(experiment_dat$Sun)
 
-dat$date <- as.Date(dat$date, format = "%Y-%m-%d")
+experiment_dat$Sun <- as.numeric(gsub("[#*]", "", experiment_dat$Sun))
 
-dat$date <- as.POSIXct(dat$date)
-
-
-
-
-
-
-
-
-# Extract year and month from the date column
-monthly_experiment <- dat %>%
-  mutate(Year = year(date), Month = month(date)) %>%  # Extract Year and Month
-  group_by(Year, Month) %>%  # Group by both Year and Month
-  summarise(
-    Tmax_mean = sum(tmax, na.rm = TRUE),
-    Tmin_mean = sum(tmin, na.rm = TRUE),
-    Rain_mean = sum(prcp, na.rm = TRUE),
-    Sun_mean = sum(tsun, na.rm = TRUE)  # Assuming tsun is in hours
-  ) %>%
-  ungroup()  # Ungroup after summarizing
-
-# View summarized data
-print(monthly_experiment)
 
 
 
@@ -73,15 +64,30 @@ head(dat_trends)
 
 
 
+
+
+
+
+
+
+
+#______________________________________####
+# calculations ####
+
+glimpse(monthly_experiment)
+glimpse(experiment_dat)
+glimpse(dat_trends)
+
+
 # Compute mean for each month across all years
 dat_trends <- dat_trends %>%
   group_by(Month) %>%
   summarise(
-    Tmax_mean = mean(Tmax, na.rm = TRUE),
-    Tmin_mean = mean(Tmin, na.rm = TRUE),
-    AirFrost_mean = mean(AirFrost, na.rm = TRUE),
-    Rain_mean = mean(Rain, na.rm = TRUE),
-    Sun_mean = mean(Sun, na.rm = TRUE)
+    Tmax = mean(Tmax, na.rm = TRUE),
+    Tmin = mean(Tmin, na.rm = TRUE),
+    AirFrost = mean(AirFrost, na.rm = TRUE),
+    Rain = mean(Rain, na.rm = TRUE),
+    Sun = mean(Sun, na.rm = TRUE)
   )
 
 # View the results
@@ -89,6 +95,27 @@ print(dat_trends)
 
 dat_trends <- dat_trends %>%
   filter(!is.na(Month))
+
+# Convert Year to character in monthly_experiment
+experiment_dat <- experiment_dat %>%
+  mutate(Year = as.character(Year), Source = "Experiment")
+
+# Add a "Source" column and ensure Year is also character in dat_trends
+dat_trends <- dat_trends %>%
+  mutate(Year = "Historical", Source = "Historic Mean")  # Label for historic data
+
+# Convert the Sun column in dat_trends to numeric
+dat_trends$Sun <- as.numeric(dat_trends$Sun)
+
+# Bind both datasets together
+combined_data <- bind_rows(experiment_dat, dat_trends)
+
+# Check the combined data
+glimpse(combined_data)
+
+
+combined_data$Tavg <- (combined_data$Tmax + combined_data$Tmin) / 2
+
 
 
 
@@ -99,85 +126,140 @@ dat_trends <- dat_trends %>%
 #______________________________________####
 # plots ####
 
-glimpse(monthly_experiment)
-glimpse(dat_trends)
 
 
+## ~~ rain ####
 
-
-
-library(dplyr)
-
-# Convert Year to character in monthly_experiment
-monthly_experiment <- monthly_experiment %>%
-  mutate(Year = as.character(Year), Source = "Experiment")
-
-# Add a "Source" column and ensure Year is also character in dat_trends
-dat_trends <- dat_trends %>%
-  mutate(Year = "Historical", Source = "Historic Mean")  # Label for historic data
-
-# Bind both datasets together
-combined_data <- bind_rows(monthly_experiment, dat_trends)
-
-# Check structure
-glimpse(combined_data)
-
-
-
-
+a <-
 ggplot(data = combined_data, 
-       aes(x = Month, 
-           y = Rain_mean, 
-           group = interaction(Year, Source), 
-           color = Year)) +
+       aes(x = factor(Month), y = Rain)) +
   
-  # Line plot for experimental data (different years)
-  geom_line(data = filter(combined_data, Source == "Experiment"), 
-            aes(), linewidth = 1) +
+  # Bar plot for experimental data (different years)
+  geom_bar(data = filter(combined_data, Source == "Experiment"), 
+           stat = "identity", position = "dodge", alpha = 0.8, aes(fill = Year)) +
   
-  # Line plot for historic mean data (dashed)
+  # Line plot for historic mean data (dashed) with legend
   geom_line(data = filter(combined_data, Source == "Historic Mean"), 
-            linetype = "dashed", linewidth = 1.2) +
+            aes(color = "Historic Mean", group = 1), linetype = "solid", linewidth = 1.2) +
+  
+  # Manually set legend colors
+  scale_color_manual(name = element_blank(), values = "black") +
   
   # Labels and theme
-  labs(title = "Monthly Rainfall Over 3 Years vs. Historic Mean",
-       subtitle = "Comparing Experiment vs. Long-Term Trends",
+  labs(
+    # title = "Monthly Rainfall Over 3 Years vs. Historic Mean",
+      subtitle = "Precipitation (mm)",
        x = "Month",
        y = "Precipitation (mm)",
-       color = "Data Source",
-       linetype = "Year") +
+       fill = "Year") +
   
-  scale_x_continuous(breaks = 1:12, labels = month.abb) +  # Format month labels (Jan, Feb, ...)
-  theme_bw()
+  scale_x_discrete(labels = month.abb) +  # Format month labels (Jan, Feb, ...)
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+
+a
+
+ggsave(filename = "symlink_climate_data/plots/fig_rain_historic_mean.png", height = 3.5, width = 10)
 
 
 
-names(combined_data)
 
+## ~~ tmax ####
+
+b <-
 ggplot(data = combined_data, 
-       aes(x = Month, 
-           y = Tmin_mean, 
-           group = interaction(Year, Source), 
-           color = Year)) +
+       aes(x = factor(Month), y = Tavg)) +
   
-  # Line plot for experimental data (different years)
-  geom_line(data = filter(combined_data, Source == "Experiment"), 
-            aes(), linewidth = 1) +
+  # Bar plot for experimental data (different years)
+  geom_bar(data = filter(combined_data, Source == "Experiment"), 
+           stat = "identity", position = "dodge", alpha = 0.8, aes(fill = Year)) +
   
-  # Line plot for historic mean data (dashed)
+  # Line plot for historic mean data (dashed) with legend
   geom_line(data = filter(combined_data, Source == "Historic Mean"), 
-            linetype = "dashed", linewidth = 1.2) +
+            aes(color = "Historic Mean", group = 1), linetype = "solid", linewidth = 1.2) +
+  
+  # Manually set legend colors
+  scale_color_manual(name = element_blank(), values = "black") +
   
   # Labels and theme
-  labs(title = "Monthly Rainfall Over 3 Years vs. Historic Mean",
-       subtitle = "Comparing Experiment vs. Long-Term Trends",
-       x = "Month",
-       y = "Precipitation (mm)",
-       color = "Data Source",
-       linetype = "Year") +
+  labs(
+    # title = "Monthly Rainfall Over 3 Years vs. Historic Mean",
+    subtitle = "Mean Temperature (°C)",
+    x = "Month",
+    y = "Temperature (°C)",
+    fill = "Year") +
   
-  scale_x_continuous(breaks = 1:12, labels = month.abb) +  # Format month labels (Jan, Feb, ...)
-  theme_bw()
+  scale_x_discrete(labels = month.abb) +  # Format month labels (Jan, Feb, ...)
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+b
+
+ggsave(filename = "symlink_climate_data/plots/fig_temp_historic_mean.png", 
+       height = 3.5, 
+       width = 10)
+
+
+
+
+
+
+
+## ~~ sun ####
+
+c <-
+  ggplot(data = combined_data, 
+         aes(x = factor(Month), y = Sun)) +
+  
+  # Bar plot for experimental data (different years)
+  geom_bar(data = filter(combined_data, Source == "Experiment"), 
+           stat = "identity", position = "dodge", alpha = 0.8, aes(fill = Year)) +
+  
+  # Line plot for historic mean data (dashed) with legend
+  geom_line(data = filter(combined_data, Source == "Historic Mean"), 
+            aes(color = "Historic Mean", group = 1), linetype = "solid", linewidth = 1.2) +
+  
+  # Manually set legend colors
+  scale_color_manual(name = element_blank(), values = "black") +
+  
+  # Labels and theme
+  labs(
+    # title = "Monthly Rainfall Over 3 Years vs. Historic Mean",
+    subtitle = "Hours of Sun (hrs)",
+    x = "Month",
+    y = "Hours of Sun (hrs)",
+    fill = "Year") +
+  
+  scale_x_discrete(labels = month.abb) +  # Format month labels (Jan, Feb, ...)
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+c
+
+ggsave(filename = "symlink_climate_data/plots/fig_sun_historic_mean.png", 
+       height = 3.5, 
+       width = 10)
+
+
+
+
+# ~ joint plot ####
+
+ggarrange(a,b,c, 
+          ncol = 1, 
+          nrow = 3, 
+          labels = c("A","B","C"), 
+          common.legend = TRUE, 
+          legend = "bottom")
+
+
+ggsave(filename = "symlink_climate_data/plots/fig_joint_climate_data_plots.png", 
+       height = 7, 
+       width = 9)
+
+
+
 
 
 
